@@ -5,12 +5,16 @@ namespace App\Http\Controllers\API;
 use App\Models\User;
 use Illuminate\Http\Request;
 use App\Http\Controllers\Controller;
+use App\Models\Member;
+use App\Models\UserOtp;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use App\Services\SmsServices;
 use App\Services\EmailService;
+use Ramsey\Uuid\Uuid;
+
 
 class UserController extends Controller
 {
@@ -23,7 +27,7 @@ class UserController extends Controller
         $this->smsService = $smsService;
     }
 
-    //Auth - Get User Details
+    //User Details
     public function profile()
     {
         $user = Auth::user();
@@ -110,7 +114,7 @@ class UserController extends Controller
 
         return response()->json([
             'status' => 200,
-            'message' => 'Profile Updated Successfully'
+            'message' => 'Profile Updated Successfullyz'
         ]);
     }
 
@@ -170,4 +174,5 @@ class UserController extends Controller
             'message' => 'Password Changed Successfully.Please Login again.'
         ]);
     }
+   
 }

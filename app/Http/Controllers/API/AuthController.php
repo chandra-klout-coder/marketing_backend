@@ -17,11 +17,14 @@ use App\Models\Subscriber;
 use App\Models\CompanyData;
 use App\Models\IndustryData;
 use App\Models\JobTitleData;
+use App\Models\EmployeeSize;
 use Illuminate\Support\Str;
 use Illuminate\Http\Request;
+
 use App\Services\SmsServices;
-use App\Models\PasswordReset;
 use App\Services\EmailService;
+
+use App\Models\PasswordReset;
 use App\Mail\ResetPasswordMail;
 use App\Models\ContactMessage;
 use App\Models\WebsiteSetting;
@@ -32,6 +35,7 @@ use Illuminate\Support\Facades\Hash;
 use App\Http\Controllers\Controller;
 use App\Models\Attendee;
 use App\Models\Event;
+use App\Models\Member;
 use App\Models\UnassignedData;
 use Maatwebsite\Excel\Concerns\ToArray;
 use Illuminate\Support\Facades\Validator;
@@ -45,6 +49,222 @@ class AuthController extends Controller
     {
         $this->emailService = $emailService;
         $this->smsService = $smsService;
+    }
+
+    //Send SMS
+    public function sendsms()
+    {
+        $send_message = $this->smsService->sendSMS('+918709289369', 'You are invited to the event!');
+
+        if ($send_message) {
+            return response()->json(['message' => 'OTP Send Successfully.'], 200);
+        }
+    }
+
+    public function employeeSize()
+    {
+        $employees = EmployeeSize::all();
+
+        if ($employees) {
+            return response()->json([
+                'status' => 200,
+                'message' => 'All Employees',
+                'data' => $employees
+            ]);
+        } else {
+            return response()->json([
+                'status' => 422,
+                'message' => 'Data not Found'
+            ]);
+        }
+    }
+
+    public function sendmail()
+    {
+        // $originalId = 123;
+
+        // $encodedId = encodeId($originalId);
+        // $decodedId = decodeId($encodedId);
+
+        // return response()->json([
+        //     'original_id' => $originalId,
+        //     'encoded_id' => $encodedId,
+        //     'decoded_id' => $decodedId,
+        // ]);
+
+        $data = ['message' => 'This is the email message.'];
+
+        // Mail::to('chandra.bhushan@digimantra.com')->send(new MyTestEmail($data));
+
+        return response()->json(['message' => 'Email sent successfully']);
+    }
+
+    //List of Members
+    public function members()
+    {
+        $userId = Auth::id();
+
+        $members = Member::where('user_id', $userId)->get();
+
+        if ($members) {
+            return response()->json([
+                'status' => 200,
+                'message' => 'All Member List',
+                'data' => $members
+            ]);
+        } else {
+            return response()->json([
+                'status' => 200,
+                'message' => 'Member not Found'
+            ]);
+        }
+    }
+
+    //Get Member Details
+    public function show($id)
+    {
+        //get details of member 
+        $member = Member::find($id);
+
+        if (!empty($member)) {
+
+            return response()->json([
+                'status' => 200,
+                'message' => 'Member Detail',
+                'data' => $member
+            ]);
+        } else {
+            return response()->json([
+                'status' => 400,
+                'message' => 'Member Detail Not Found',
+            ]);
+        }
+    }
+
+    //
+
+    public function registerMemberOtp(Request $request)
+    {
+        if ($request->step === '1') {
+
+            $validator = Validator::make($request->all(), [
+                'first_name' => 'required | string | max:200',
+                'last_name' => 'string | max:200',
+                'email' => 'required | email | max: 255 | unique:users',
+                'mobile_number' => 'required | min:10 | max:10 | unique:users',
+                'company' => 'required',
+                'step' => 'required',
+            ]);
+
+            if ($validator->fails()) {
+
+                $errors = $validator->errors();
+
+                return response()->json([
+                    'status' => 422,
+                    'message' => 'Validation Error',
+                    'error' => $errors,
+                ]);
+            }
+
+            // Send OTP 
+            // $mobile_otp = rand(100000, 999999);
+            // $email_otp = rand(100000, 999999);
+
+            // For Demo purpose 
+            $email_otp = '123456';
+            $mobile_otp = '123456';
+
+            $email = $request->email;
+            $mobile_number = $request->mobile_number;
+
+            UserOtp::where('email', $email)->delete();
+
+            UserOtp::create([
+                'email' => $email,
+                'email_otp' => $email_otp,
+                'mobile' =>  $mobile_number,
+                'mobile_otp'  => $mobile_otp
+            ]);
+
+            $this->smsService->sendSMS('+91' . $mobile_number, 'Your OTP is : ' . $mobile_otp);
+
+            $email_message = 'Your OTP is : ' . $email_otp;
+
+            $this->emailService->sendRegistrationEmail($email, 'KLout Marketing : OTP Verification', $email_message);
+
+            return response()->json([
+                'status' => 200,
+                'message' => 'OTP Send to Mobile Number and Email.'
+            ]);
+        } elseif ($request->step === '2') {
+
+            $email = $request->email;
+            $mobile = $request->mobile_number;
+
+            $mobile_verify = UserOtp::where('mobile', $mobile)->first();
+            $email_verify = UserOtp::where('email', $email)->first();
+
+            if (!empty($mobile_verify) && !empty($mobile_verify)) {
+
+                if (($mobile_verify->mobile_otp !== trim($request->mobile_otp))) {
+                    return response()->json([
+                        'status' => 400,
+                        'error' => 'mobile_otp',
+                        'message' => 'Mobile OTP is Invalid.',
+                    ]);
+                }
+
+                if (($email_verify->email_otp !== trim($request->email_otp))) {
+                    return response()->json([
+                        'status' => 400,
+                        'error' => 'email_otp',
+                        'message' => 'Email OTP is Invalid.',
+                    ]);
+                } else if (!empty($mobile_verify) && !empty($email_verify)) {
+
+                    $user = User::create([
+                        'uuid' => Uuid::uuid4()->toString(),
+                        'first_name' => $request->first_name,
+                        'last_name' => $request->last_name,
+                        'email' => strtolower($request->email),
+                        'password' => Hash::make($request->password),
+                        'mobile_number' => $request->mobile_number,
+                        'company' => $request->company
+                    ]);
+
+                    $registration_success_message = "Congratulations ! Your registration is Completed on Klout Club.";
+
+                    $this->smsService->sendSMS('+91' . $mobile, $registration_success_message);
+
+                    $this->emailService->sendRegistrationEmail($email, 'Klout : Registration Successfully', $registration_success_message);
+
+                    $delete_otp_record = UserOtp::where('email', $email)->delete();
+
+                    if ($delete_otp_record) {
+                        return response()->json([
+                            'status' => 200,
+                            'message' => 'OTP Verified Successfully'
+                        ]);
+                    }
+                } else {
+                    return response()->json([
+                        'status' => 401,
+                        'message' => 'Something Went Wrong.Please try again.'
+                    ]);
+                }
+            } else {
+                return response()->json([
+                    'status' => 401,
+                    'message' => 'Invalid OTP.Please try again.'
+                ]);
+            }
+        }
+
+        return response()->json([
+            'status' => 200,
+            'message' => 'Invalid paramters and try again.'
+        ]);
     }
 
     //Mobile App
@@ -173,8 +393,6 @@ class AuthController extends Controller
             ]);
         }
     }
-
-
     public function countries()
     {
         $countries = Country::all();
@@ -192,7 +410,6 @@ class AuthController extends Controller
             ]);
         }
     }
-
 
     public function icp_search(Request $request)
     {
@@ -247,17 +464,6 @@ class AuthController extends Controller
         }
     }
 
-
-
-
-
-
-
-
-
-
-
-
     public function jobtitles()
     {
         $jobtitles = JobTitle::all();
@@ -274,469 +480,6 @@ class AuthController extends Controller
                 'message' => 'Data not Found'
             ]);
         }
-    }
-
-
-
-    //City wise Event 
-    public function city_wise_event(Request $request)
-    {
-        $city_id = $request->input('city_id');
-
-        $allEvents = Event::where('city', $city_id)->get();
-
-        if ($allEvents) {
-            return response()->json([
-                'status' => 200,
-                'message' => 'All City Wise Event',
-                'data' => $allEvents
-            ]);
-        } else {
-            return response()->json([
-                'status' => 422,
-                'message' => 'Data not Found'
-            ]);
-        }
-    }
-
-    //Mapping of Industries
-    public function industry(Request $request)
-    {
-        $names = IndustryData::all();
-
-        $rootNames = $request->input('industry_name');
-
-        if (isset($names) && count($names) > 0) {
-
-            if ($names->contains('name', $rootNames)) {
-
-                unset($rootNames);
-            } else {
-
-                foreach ($names as $name) {
-
-                    $maxSimilarity = 0;
-
-                    similar_text($name->name, $rootNames, $similarity);
-
-                    if ($similarity > $maxSimilarity) {
-                        $maxSimilarity = $similarity;
-                    }
-
-                    if ($maxSimilarity >= 30 && $maxSimilarity <= 90) {
-
-                        $nameO = IndustryData::find($name->id);
-
-                        if ($nameO) {
-                            $nameO->children()->create([
-                                'name' => $rootNames,
-                            ]);
-                        }
-
-                        unset($rootNames);
-
-                        break;
-                    }
-
-                    if ($maxSimilarity < 30) {
-
-                        IndustryData::create([
-                            'name' => $rootNames,
-                            'parent_id' => 0,
-                        ]);
-
-                        unset($rootNames);
-
-                        break;
-                    }
-
-                    $maxSimilarity = $similarity = 0;
-                }
-            }
-        } else {
-
-            IndustryData::create([
-                'name' => $rootNames,
-                'parent_id' => 0,
-            ]);
-        }
-
-        return response()->json([
-            'status' => 200,
-            'message' => 'Industry Added Successfully.'
-        ]);
-    }
-
-    //Mapping of Companies
-    public function company(Request $request)
-    {
-        $names = CompanyData::all();
-
-        $rootNames = $request->input('company_name');
-
-        if (isset($names) && count($names) > 0) {
-
-            if ($names->contains('name', $rootNames)) {
-
-                unset($rootNames);
-            } else {
-
-                foreach ($names as $name) {
-
-                    $maxSimilarity = 0;
-
-                    similar_text($name->name, $rootNames, $similarity);
-
-                    if ($similarity > $maxSimilarity) {
-                        $maxSimilarity = $similarity;
-                    }
-
-                    if ($maxSimilarity >= 30 && $maxSimilarity <= 90) {
-
-                        $nameO = Name::find($name->id);
-
-                        if ($nameO) {
-                            $nameO->children()->create([
-                                'name' => $rootNames,
-                            ]);
-                        }
-
-                        unset($rootNames);
-
-                        break;
-                    }
-
-                    if ($maxSimilarity < 30) {
-
-                        Name::create([
-                            'name' => $rootNames,
-                            'parent_id' => 0,
-                        ]);
-
-                        unset($rootNames);
-
-                        break;
-                    }
-
-                    $maxSimilarity = $similarity = 0;
-                }
-            }
-        } else {
-
-            Name::create([
-                'name' => $rootNames,
-                'parent_id' => 0,
-            ]);
-        }
-
-        return response()->json([
-            'status' => 200,
-            'message' => 'Company Added Successfully.'
-        ]);
-    }
-
-    //Mapping of Job Titles
-    public function job_title(Request $request)
-    {
-        $names = JobTitleData::all();
-
-        $rootNames = $request->input('job_title_name');
-
-        if (isset($names) && count($names) > 0) {
-
-            if ($names->contains('name', $rootNames)) {
-
-                unset($rootNames);
-            } else {
-
-                foreach ($names as $name) {
-
-                    $maxSimilarity = 0;
-
-                    similar_text($name->name, $rootNames, $similarity);
-
-                    if ($similarity > $maxSimilarity) {
-                        $maxSimilarity = $similarity;
-                    }
-
-                    if ($maxSimilarity >= 30 && $maxSimilarity <= 90) {
-
-                        $nameO = Name::find($name->id);
-
-                        if ($nameO) {
-                            $nameO->children()->create([
-                                'name' => $rootNames,
-                            ]);
-                        }
-
-                        unset($rootNames);
-
-                        break;
-                    }
-
-                    if ($maxSimilarity < 30) {
-
-                        Name::create([
-                            'name' => $rootNames,
-                            'parent_id' => 0,
-                        ]);
-
-                        unset($rootNames);
-
-                        break;
-                    }
-
-                    $maxSimilarity = $similarity = 0;
-                }
-            }
-        } else {
-
-            Name::create([
-                'name' => $rootNames,
-                'parent_id' => 0,
-            ]);
-        }
-
-        return response()->json([
-            'status' => 200,
-            'message' => 'Job Title Added Successfully.'
-        ]);
-    }
-
-    //Mapping of Skills
-    public function skills(Request $request)
-    {
-        $names = SkillsData::all();
-
-        $rootNames = trim($request->input('skills_name'));
-
-        if (isset($names) && count($names) > 0) {
-
-            if ($names->contains('name', $rootNames)) {
-
-                unset($rootNames);
-
-                return response()->json([
-                    'status' => 201,
-                    'message' => 'Skills Already Exists.'
-                ]);
-            } else {
-
-                SkillsData::create([
-                    'name' => $rootNames,
-                ]);
-                return response()->json([
-                    'status' => 200,
-                    'message' => 'Skills Added Successfully.'
-                ]);
-            }
-        } else {
-
-            SkillsData::create([
-                'name' => $rootNames,
-            ]);
-
-            return response()->json([
-                'status' => 200,
-                'message' => 'Skills Added Successfully.'
-            ]);
-        }
-    }
-
-    //Mapping Company
-    public function country(Request $request)
-    {
-        $names = Country::all();
-
-        $rootNames = $request->input('country_name');
-
-        if (isset($names) && count($names) > 0) {
-
-            if ($names->contains('name', $rootNames)) {
-
-                unset($rootNames);
-
-                return response()->json([
-                    'status' => 201,
-                    'message' => 'Country Already Exists.'
-                ]);
-            } else {
-
-                Country::create([
-                    'name' => $rootNames,
-                ]);
-                return response()->json([
-                    'status' => 200,
-                    'message' => 'Country Added Successfully.'
-                ]);
-            }
-        } else {
-
-            Country::create([
-                'name' => $rootNames,
-            ]);
-
-            return response()->json([
-                'status' => 200,
-                'message' => 'Country Added Successfully.'
-            ]);
-        }
-    }
-
-    //Mapping State
-    public function state(Request $request)
-    {
-        $names = State::all();
-
-        $rootNames = $request->input('state_name');
-
-        if (isset($names) && count($names) > 0) {
-
-            if ($names->contains('name', $rootNames)) {
-
-                unset($rootNames);
-
-                return response()->json([
-                    'status' => 201,
-                    'message' => 'State Already Exists.'
-                ]);
-            } else {
-
-                State::create([
-                    'name' => $rootNames,
-                ]);
-                return response()->json([
-                    'status' => 200,
-                    'message' => 'State Added Successfully.'
-                ]);
-            }
-        } else {
-
-            State::create([
-                'name' => $rootNames,
-            ]);
-
-            return response()->json([
-                'status' => 200,
-                'message' => 'State Added Successfully.'
-            ]);
-        }
-    }
-
-    //Mapping City
-    public function city(Request $request)
-    {
-        $names = City::all();
-
-        $rootNames = $request->input('city_name');
-
-        if (isset($names) && count($names) > 0) {
-
-            if ($names->contains('name', $rootNames)) {
-
-                unset($rootNames);
-
-                return response()->json([
-                    'status' => 201,
-                    'message' => 'City Already Exists.'
-                ]);
-            } else {
-
-                City::create([
-                    'name' => $rootNames,
-                ]);
-
-                return response()->json([
-                    'status' => 200,
-                    'message' => 'City Added Successfully.'
-                ]);
-            }
-        } else {
-
-            City::create([
-                'name' => $rootNames,
-            ]);
-
-            return response()->json([
-                'status' => 200,
-                'message' => 'City Added Successfully.'
-            ]);
-        }
-    }
-
-    public function test()
-    {
-        $companies = ["Accolite software", "Accord software", "Adobe", "Able", "Abstract", "Acko", "Accredible", "Activision Blizzard", "Affinidi", "Agile Solutions", "Agnikul Cosmos", "Airbase", "Airbnb", "Airbus", "Airtel x labs", "Ajio", "Akamai", "Alstom", "Alpha-grep", "Alphonso", "Amadeus labs", "Amagi", "AMD", "Amazon", "Amdocs", "American express", "Amway", "Angelone", "Analog Devices", "Ansys", "Apna", "App Dynamics", "Appen", "Apple", "AppInventiv", "Applied Materials", "Aptiv", "AQR", "Arcesium", "Arista Networks", "Aryaka networks", "Asteria Aerospace Ltd", "ASML", "Athena Health", "Atlan", "Atlassian", "Automatic Data Processing", "Auzmor", "Avail finance", "Avalara", "Avaya", "Barclays", "Bain & Co", "BARC India", "bankbazaar", "Bazaarvoice", "BCG", "Bellatrix Aerospace", "Benchmark", "Better", "BharatPe", "Bidgely", "BigBasket", "BlackBuck", "Blackrock", "Block Inc", "Bloomberg LP", "BlueJeans", "Bluestacks", "BMC software", "BNY Mellon", "Boeing", "Booking.com", "Bosch", "Bottemline Technologies", "Bounce", "Box", "Brahmastra Aerospace", "Browser stack", "Broadcom", "BukuWarung", "ByteDance", "Cadence", "Capillary", "Capital One", "CarDekho", "Careem", "CarWale", "Cashfree", "Cimpress", "Celigo", "Cerner", "Chargebee", "Checkout.com", "Chronus", "Cisco", "Citadel", "Citadel Securities", "Citrix", "Classplus", "ClearGlass", "Cleartrip", "Cloudera", "Codenation innovation labs", "CodeParva Technologies Pvt Ltd", "CodingNinjas", "Cognizant", "CoinBase", "CoinDCX", "Coinswitch kuber", "Commvault", "Continental", "Contra", "Coupang", "Cradlepoint", "Cred", "Credit Suisse", "Crestron", "Crowdstrike", "CSS Corp", "cure.fit", "Cvent", "DailyHunt", "Dashlane", "Databricks", "Dataminr", "DBS", "D. E. Shaw & Co.", "DealShare", "Delhivery", "Dell", "Deutsche Bank", "Dhruva Space", "Dialpad", "Directi", "digit", "Discord", "Discovery inc", "Disney", "DoorDash", "DP World", "DRDO", "Dream11", "droom", "Dropbox", "Druva", "Dukaan", "Dunzo", "DuPont", "EA Games", "Enfussion", "Envestnet Yoodlee", "Epam", "Ericsson", "Eurofins", "Equinix", "EXL Healthcare", "Expedia", "EY", "EyeROV", "F5", "factset", "FamPay", "Fidelity investments", "FireEye inc", "Fischer Jordan", "fiserv", "Flexport", "Flipkart", "FlyFin", "fincover", "Fractal", "Frappe Technologies", "FreeCharge", "Freshworks", "Furlenco", "fyle", "Fico", "Gartner", "Garuda Aerospace private Ltd", "GeeksForGeeks", "GE", "GE Healthcare", "GeekyAnts", "Genpact", "Ghost", "Github", "Gitlab", "GoDaddy", "GoDigit", "Godrej Aerospace", "Gojek", "Goldman Sachs", "Google", "Global Logic", "Grab", "Gravitont Rading", "Groupon", "Grofers", "Groww", "Hackerearth", "HackerRank", "Hashedin", "Hashnode", "HBO", "HealthAsyst", "Healthify me", "HERE", "Hexagone", "Hotstar", "Honeywell", "HP", "IBM", "IdeaForge", "IHS Markit", "Impact Analytics", "Indeed", "India Mart", "Infor", "Informatica", "Infospoke", "Inmobi", "Innovaccer", "Intel", "Intellika", "Intuit", "IP Infusion", "ISRO", "iQuanti", "Jaguar", "Jio", "JM Financial", "JP Morgan", "Juniper networks", "Jupiter money", "Juspay", "Jumbotail", "Kantar", "Kesari bharat", "Keyence", "Keyvalue", "Khatabook", "khoros", "KLA Tencor", "Koch", "LambdaTest", "Lam Research", "Land rover", "Lenskart", "Leap Finance", "Licious", "Liebherr", "LinkedIn", "LogicFruit", "Logicmonitor", "Lowe's companies, inc", "Magicpin", "MakeMyTrip", "Mastercard", "Mastery", "Mathworks", "Maq Software", "McKinsey", "Media.net", "Meta", "Meesho", "Memory", "Micron", "Microsoft", "MindTickle", "MobiKwik", "Morgan Stanley", "Mount talent", "MPL", "MTX", "Myntra", "Nagarro", "NASDAQ", "National instruments", "NatWest Group", "navi", "NCR Corporation", "NetApp", "Netcracker", "Netflix", "Netmeds", "Nike", "Ninjacart", "Nokia", "nurture.farm", "Nutanix", "Nvidia", "Nykaa", "Ninjacart", "Obvious", "Ocrolus", "Ola", "Olx", "Oracle", "OYO", "Observe.ai", "OpenText", "Optum", "Optym", "Palo Alto Networks", "Park+", "Paypal", "Paytm", "PayU", "Pazo", "PeopleStrong", "persistent systems", "PharmEasy", "Phillips", "Phonepe", "Playment", "Planful", "Polygon Technology", "postman", "Practo", "priceline", "Principal", "Privado.ai", "Providence Healthcare", "Protegrity", "Proximity Labs", "Prodapt", "Publicis Sapient", "PubMatic", "Qualcomm", "Quantiphi", "QuickSell", "Quora", "Ramp", "Razorpay", "Red hat", "Reelo", "Reprise", "Rippling", "Rivigo", "Rocket Companies", "Rockstar Games", "Rubrik", "Saavan", "Sabre corporation", "SalaryBox", "Salesforce", "Samsung", "SAP", "Schneider Electric", "SendinBlue", "SerpApi", "ServiceNow", "Shaadi.com", "ShareChat", "Shell", "Shipsy", "Shopee", "Shopify", "Siemens", "Siemens Healthineers", "Sigmoid", "SkillVertex", "Skyroot Aerospace", "Sling Media", "Smith Detection", "Sony", "Spinny", "Sprinklr", "Squadstack", "Stripe", "Sureify", "Swiggy", "Synopsys", "Target", "TATA Advanced Sysytems Ltd", "TATA nexarc", "TE Connectivity", "TEK Systems", "Tekion corp", "Tencent", "Tesla", "Teradata", "Texas Instruments", "TSMC", "ThoughtSpot", "ThoughtWorks", "Topcoder", "Toptal", "tower research capital", "Treebo Hotels", "Turvo", "Twilio", "Twitter", "Uber", "Ubisoft", "Udaan", "Ultimate Kronos Group", "unacadamy", "Unicommerce", "Unisys", "Upgrad", "Upstox", "Upwork", "Urban company", "Valuefy", "Viasat", "Vicara", "Visa", "Vmware", "Vogo", "Walmart", "Warner Bros.", "Wells Fargo", "Western Digital", "Whatfix", "Wooqer", "worldQuant", "Xiaomi", "Xicom Technologies", "Yahoo", "yellow.ai", "yugabyte", "Yulu Bikes", "zerodha", "Zeta", "ZivaMe", "zoho", "Zomato", "ZoomCar", "ZS", "zerodha", "Zeta", "ZivaMe", "zoho", "Zomato", "ZoomCar", "ZS"];
-
-        $industries = ["Industry", "Accounting ", "Airlines/Aviation", "Alternative Dispute Resolution", "Alternative Medicine", "Animation", "Apparel/Fashion", "Architecture/Planning", "Arts/Crafts", "Automotive", "Aviation/Aerospace", "Banking/Mortgage", "Biotechnology/Greentech", "Broadcast Media", "Building Materials", "Business Supplies/Equipment", "Capital Markets/Hedge Fund/Private Equity", "Chemicals", "Civic/Social Organization", "Civil Engineering", "Commercial Real Estate", "Computer Games", "Computer Hardware", "Computer Networking", "Computer Software/Engineering", "Computer/Network Security", "Construction", "Consumer Electronics", "Consumer Goods", "Consumer Services", "Cosmetics", "Dairy", "Defense/Space", "Design", "E-Learning", "Education Management", "Electrical/Electronic Manufacturing", "Entertainment/Movie Production", "Environmental Services", "Events Services", "Executive Office", "Facilities Services", "Farming", "Financial Services", "Fine Art", "Fishery", "Food Production", "Food/Beverages", "Fundraising", "Furniture", "Gambling/Casinos", "Glass/Ceramics/Concrete", "Government Administration", "Government Relations", "Graphic Design/Web Design", "Health/Fitness", "Higher Education/Acadamia", "Hospital/Health Care", "Hospitality", "Human Resources/HR", "Import/Export", "Individual/Family Services", "Industrial Automation", "Information Services", "Information Technology/IT", "Insurance", "International Affairs", "International Trade/Development", "Internet", "Investment Banking/Venture", "Investment Management/Hedge Fund/Private Equity", "Judiciary", "Law Enforcement", "Law Practice/Law Firms", "Legal Services", "Legislative Office", "Leisure/Travel", "Library", "Logistics/Procurement", "Luxury Goods/Jewelry", "Machinery", "Management Consulting", "Maritime", "Market Research", "Marketing/Advertising/Sales", "Mechanical or Industrial Engineering", "Media Production", "Medical Equipment", "Medical Practice", "Mental Health Care", "Military Industry", "Mining/Metals", "Motion Pictures/Film", "Museums/Institutions", "Music", "Nanotechnology", "Newspapers/Journalism", "Non-Profit/Volunteering", "Oil/Energy/Solar/Greentech", "Online Publishing", "Other Industry", "Outsourcing/Offshoring", "Package/Freight Delivery", "Packaging/Containers", "Paper/Forest Products", "Performing Arts", "Pharmaceuticals", "Philanthropy", "Photography", "Plastics", "Political Organization", "Primary/Secondary Education", "Printing", "Professional Training", "Program Development", "Public Relations/PR", "Public Safety", "Publishing Industry", "Railroad Manufacture", "Ranching", "Real Estate/Mortgage", "Recreational Facilities/Services", "Religious Institutions", "Renewables/Environment", "Research Industry", "Restaurants", "Retail Industry", "Security/Investigations", "Semiconductors", "Shipbuilding", "Sporting Goods", "Sports", "Staffing/Recruiting", "Supermarkets", "Telecommunications", "Textiles", "Think Tanks", "Tobacco", "Translation/Localization", "Transportation", "Utilities", "Venture Capital/VC", "Veterinary", "Warehousing", "Wholesale", "Wine/Spirits", "Wireless", "Writing/Editing", "Others"];
-
-        $job_titles = ["Marketing Specialist", "Marketing Manager", "Marketing Director", "Graphic Designer", "Marketing Research Analyst", "Marketing Communications Manager", "Marketing Consultant", "Product Manager", "Public Relations", "Social Media Assistant", "Brand Manager", "SEO Manager", "Content Marketing Manager", "Copywriter", "Media Buyer", "Digital Marketing Manager", "eCommerce Marketing Specialist", "Brand Strategist", "Vice President of Marketing", "Media Relations Coordinator", "Administrative Assistant", "Receptionist", "Office Manager", "Auditing Clerk", "Bookkeeper", "Account Executive", "Branch Manager", "Business Manager", "Quality Control Coordinator", "Administrative Manager", "Chief Executive Officer", "Business Analyst", "Risk Manager", "Human Resources", "Office Assistant", "Secretary", "Office Clerk", "File Clerk", "Account Collector", "Administrative Specialist", "Executive Assistant", "Program Administrator", "Program Manager", "Administrative Analyst", "Data Entry", "CEO—Chief Executive Officer", "COO—Chief Operating Officer", "CFO—Chief Financial Officer", "CIO—Chief Information Officer", "CTO—Chief Technology Officer", "CMO—Chief Marketing Officer", "CHRO—Chief Human Resources Officer", "CDO—Chief Data Officer", "CPO—Chief Product Officer", "CCO—Chief Customer Officer", "Team Leader", "Manager", "Assistant Manager", "Executive", "Director", "Coordinator", "Administrator", "Controller", "Officer", "Organizer", "Supervisor", "Superintendent", "Head", "Overseer", "Chief", "Foreman", "Controller", "Principal", "President", "Lead", "Computer Scientist", "IT Professional", "UX Designer & UI Developer", "SQL Developer", "Web Designer", "Web Developer", "Help Desk Worker/Desktop Support", "Software Engineer", "Data Entry", "DevOps Engineer", "Computer Programmer", "Network Administrator", "Information Security Analyst", "Artificial Intelligence Engineer", "Cloud Architect", "IT Manager", "Technical Specialist", "Application Developer", "Chief Technology Officer (CTO)", "Chief Information Officer (CIO)", "Sales Associate", "Sales Representative", "Sales Manager", "Retail Worker", "Store Manager", "Sales Representative", "Sales Manager", "Real Estate Broker", "Sales Associate", "Cashier", "Store Manager", "Account Executive", "Account Manager", "Area Sales Manager", "Direct Salesperson", "Director of Inside Sales", "Outside Sales Manager", "Sales Analyst", "Market Development Manager", "B2B Sales Specialist", "Sales Engineer", "Merchandising Associate", "Construction Worker", "Taper", "Plumber", "Heavy Equipment Operator", "Vehicle or Equipment Cleaner", "Carpenter", "Electrician", "Painter", "Welder", "Handyman", "Boilermaker", "Crane Operator", "Building Inspector", "Pipefitter", "Sheet Metal Worker", "Iron Worker", "Mason", "Roofer", "Solar Photovoltaic Installer", "Well Driller", "CEO", "Proprietor", "Principal", "Owner", "President", "Founder", "Administrator", "Director", "Managing Partner", "Managing Member", "Board of Directors", "C-Level or C-Suite.", "Shareholders", "Managers", "Supervisors", "Front-Line Employees", "Quality Control", "Human Resources", "Accounting Staff", "Marketing Staff", "Purchasing Staff", "Shipping and Receiving Staff", "Office Manager", "Receptionist", "Virtual Assistant", "Customer Service", "Customer Support", "Concierge", "Help Desk", "Customer Service Manager", "Technical Support Specialist", "Account Representative", "Client Service Specialist", "Customer Care Associate", "Operations Manager", "Operations Assistant", "Operations Coordinator", "Operations Analyst", "Operations Director", "Vice President of Operations", "Operations Professional", "Scrum Master", "Continuous Improvement Lead", "Continuous Improvement Consultant", "Credit Authorizer", "Benefits Manager", "Credit Counselor", "Accountant", "Bookkeeper", "Accounting Analyst", "Accounting Director", "Accounts Payable/Receivable Clerk", "Auditor", "Budget Analyst", "Controller", "Financial Analyst", "Finance Manager", "Economist", "Payroll Manager", "Payroll Clerk", "Financial Planner", "Financial Services Representative", "Finance Director", "Commercial Loan Officer", "Engineer", "Mechanical Engineer", "Civil Engineer", "Electrical Engineer", "Assistant Engineer", "Chemical Engineer", "Chief Engineer", "Drafter", "Engineering Technician", "Geological Engineer", "Biological Engineer", "Maintenance Engineer", "Mining Engineer", "Nuclear Engineer", "Petroleum Engineer", "Plant Engineer", "Production Engineer", "Quality Engineer", "Safety Engineer", "Sales Engineer", "Chief People Officer", "VP of Miscellaneous Stuff", "Chief Robot Whisperer", "Director of First Impressions", "Culture Operations Manager", "Director of Ethical Hacking", "Software Ninjaneer", "Director of Bean Counting", "Digital Overlord", "Director of Storytelling", "Researcher", "Research Assistant", "Data Analyst", "Business Analyst", "Financial Analyst", "Biostatistician", "Title Researcher", "Market Researcher", "Title Analyst", "Medical Researcher", "Mentor", "Tutor/Online Tutor", "Teacher", "Teaching Assistant", "Substitute Teacher", "Preschool Teacher", "Test Scorer", "Online ESL Instructor", "Professor", "Assistant Professor", "Others"];
-
-        $sponsorship_packages = ["Title", "Presenting", "Co-Presenting", "Platinum", "Diamond", "Gold", "Silver", "Associate", "Custom"];
-
-        $countries = ["Benin", "Bermuda", "Bhutan", "Bolivia", "Bosnia & Herzegovina", "Botswana", "Brazil", "British Virgin Is.", "Brunei", "Bulgaria", "Burkina Faso", "Burma", "Burundi", "Cambodia", "Cameroon", "Canada", "Cape Verde", "Cayman Islands", "Central African Rep.", "Chad", "Chile", "China", "Colombia", "Comoros", "Congo, Dem. Rep.", "Congo, Repub. of the", "Cook Islands", "Costa Rica", "Cote d'Ivoire", "Croatia", "Cuba", "Cyprus", "Czech Republic", "Denmark", "Djibouti", "Dominica", "Dominican Republic", "East Timor", "Ecuador", "Egypt", "El Salvador", "Equatorial Guinea", "Eritrea", "Estonia", "Ethiopia", "Faroe Islands", "Fiji", "Finland", "France", "French Guiana", "French Polynesia", "Gabon", "Gambia, The", "Gaza Strip", "Georgia", "Germany", "Ghana", "Gibraltar", "Greece", "Greenland", "Grenada", "Guadeloupe", "Guam", "Guatemala", "Guernsey", "Guinea", "Guinea-Bissau", "Guyana", "Haiti", "Honduras", "Hong Kong", "Hungary", "Iceland", "India", "Indonesia", "Iran", "Iraq", "Ireland", "Isle of Man", "Israel", "Italy", "Jamaica", "Japan", "Jersey", "Jordan", "Kazakhstan", "Kenya", "Kiribati", "Korea, North", "Korea, South", "Kuwait", "Kyrgyzstan", "Laos", "Latvia", "Lebanon", "Lesotho", "Liberia", "Libya", "Liechtenstein", "Lithuania", "Luxembourg", "Macau", "Macedonia", "Madagascar", "Malawi", "Malaysia", "Maldives", "Mali", "Malta", "Marshall Islands", "Martinique", "Mauritania", "Mauritius", "Mayotte", "Mexico", "Micronesia, Fed. St.", "Moldova", "Monaco", "Mongolia", "Montserrat", "Morocco", "Mozambique", "Namibia", "Nauru", "Nepal", "Netherlands", "Netherlands Antilles", "New Caledonia", "New Zealand", "Nicaragua", "Niger", "Nigeria", "N. Mariana Islands", "Norway", "Oman", "Pakistan", "Palau", "Panama", "Papua New Guinea", "Paraguay", "Peru", "Philippines", "Poland", "Portugal", "Puerto Rico", "Qatar", "Reunion", "Romania", "Russia", "Rwanda", "Saint Helena", "Saint Kitts & Nevis", "Saint Lucia", "St Pierre & Miquelon", "Saint Vincent and the Grenadines", "Samoa", "San Marino", "Sao Tome & Principe", "Saudi Arabia", "Senegal", "Serbia", "Seychelles", "Sierra Leone", "Singapore", "Slovakia", "Slovenia", "Solomon Islands", "Somalia", "South Africa", "Spain", "Sri Lanka", "Sudan", "Suriname", "Swaziland", "Sweden", "Switzerland", "Syria", "Taiwan", "Tajikistan", "Tanzania", "Thailand", "Togo", "Tonga", "Trinidad & Tobago", "Tunisia", "Turkey", "Turkmenistan", "Turks & Caicos Is", "Tuvalu", "Uganda", "Ukraine", "United Arab Emirates", "United Kingdom", "United States", "Uruguay", "Uzbekistan", "Vanuatu", "Venezuela", "Vietnam", "Virgin Islands", "Wallis and Futuna", "West Bank", "Western Sahara", "Yemen", "Zambia", "Zimbabwe"];
-
-        $cities = ["Abohar", "Adilabad", "Agartala", "Agra", "Ahmadnagar", "Ahmedabad", "Aizawl  ", "Ajmer", "Akola", "Alappuzha", "Aligarh", "Alipurduar", "Allahabad", "Alwar", "Ambala", "Amaravati", "Amritsar", "Asansol", "Aurangabad", "Aurangabad", "Bakshpur", "Bamanpuri", "Baramula", "Barddhaman", "Bareilly", "Belgaum", "Bellary", "Bengaluru", "Bhagalpur", "Bharatpur", "Bharauri", "Bhatpara", "Bhavnagar", "Bhilai", "Bhilwara", "Bhiwandi", "Bhiwani", "Bhopal ", "Bhubaneshwar", "Bhuj", "Bhusaval", "Bidar", "Bijapur", "Bikaner", "Bilaspur", "Brahmapur", "Budaun", "Bulandshahr", "Calicut", "Chanda", "Chandigarh ", "Chennai", "Chikka Mandya", "Chirala", "Coimbatore", "Cuddalore", "Cuttack", "Daman", "Davangere", "DehraDun", "Delhi", "Dhanbad", "Dibrugarh", "Dindigul", "Dispur", "Diu", "Faridabad", "Firozabad", "Fyzabad", "Gangtok", "Gaya", "Ghandinagar", "Ghaziabad", "Gopalpur", "Gulbarga", "Guntur", "Gurugram", "Guwahati", "Gwalior", "Haldia", "Haora", "Hapur", "Haripur", "Hata", "Hindupur", "Hisar", "Hospet", "Hubli", "Hyderabad", "Imphal", "Indore", "Itanagar", "Jabalpur", "Jaipur", "Jammu", "Jamshedpur", "Jhansi", "Jodhpur", "Jorhat", "Kagaznagar", "Kakinada", "Kalyan", "Karimnagar", "Karnal", "Karur", "Kavaratti", "Khammam", "Khanapur", "Kochi", "Kohima", "Kolar", "Kolhapur", "Kolkata ", "Kollam", "Kota", "Krishnanagar", "Krishnapuram", "Kumbakonam", "Kurnool", "Latur", "Lucknow", "Ludhiana", "Machilipatnam", "Madurai", "Mahabubnagar", "Malegaon Camp", "Mangalore", "Mathura", "Meerut", "Mirzapur", "Moradabad", "Mumbai", "Muzaffarnagar", "Muzaffarpur", "Mysore", "Nagercoil", "Nalgonda", "Nanded", "Nandyal", "Nasik", "Navsari", "Nellore", "New Delhi", "Nizamabad", "Ongole", "Pali", "Panaji", "Panchkula", "Panipat", "Parbhani", "Pathankot", "Patiala", "Patna", "Pilibhit", "Porbandar", "Port Blair", "Proddatur", "Puducherry", "Pune", "Puri", "Purnea", "Raichur", "Raipur", "Rajahmundry", "Rajapalaiyam", "Rajkot", "Ramagundam", "Rampura", "Ranchi", "Ratlam", "Raurkela", "Rohtak", "Saharanpur", "Saidapur", "Saidpur", "Salem", "Samlaipadar", "Sangli", "Saugor", "Shahbazpur", "Shiliguri", "Shillong", "Shimla", "Shimoga", "Sikar", "Silchar", "Silvassa", "Sirsa", "Sonipat", "Srinagar", "Surat", "Tezpur", "Thanjavur", "Tharati Etawah", "Thiruvananthapuram", "Tiruchchirappalli", "Tirunelveli", "Tirupati", "Tiruvannamalai", "Tonk", "Tuticorin", "Udaipur", "Ujjain", "Vadodara", "Valparai", "Varanasi", "Vellore", "Vishakhapatnam", "Vizianagaram", "Warangal", "Jorapokhar", "Brajrajnagar", "Talcher"];
-
-
-        // foreach ($skills as $skill) {
-        //     $skills_data = new SkillsData();
-        //     $skills_data->name = $skill;
-        //     $skills_data->save();
-        // }
-
-        // foreach ($states as $state) {
-        //     $states_data = new State();
-        //     $states_data->name = $state;
-        //     $states_data->save();
-        // }
-
-        // foreach ($countries as $country) {
-        //     $countries_data = new Country();
-        //     $countries_data->name = $country;
-        //     $countries_data->save();
-        // }
-
-        // foreach ($states as $state) {
-        //     $states_data = new State();
-        //     $states_data->name = $state;
-        //     $states_data->save();
-        // }
-
-        // foreach ($cities as $city) {
-        //     $cities_data = new City();
-        //     $cities_data->name = $city;
-        //     $cities_data->save();
-        // }
-
-        // foreach ($sponsorship_packages as $sponsorship){
-        //    $sponsorship_packages = new SponsorshipPackages();
-        //    $sponsorship_packages->name = $sponsorship;
-        //    $sponsorship_packages->save();
-        // }
-
-        // foreach ($companies as $company) {
-        //     $company = new Company();
-        //     $company->name = $company;
-        //     $company->save();
-        // }
-
-        // foreach ($industries as $industry) {
-        //     $company = new Industry();
-        //     $company->name = $industry;
-        //     $company->save();
-        // }
-
-        // foreach ($job_titles as $job_title) {
-        //     $job = new JobTitle();
-        //     $job->name = $job_title;
-        //     $job->save();
-        // }
-
-        return response()->json([
-            'status' => 200,
-            'message' => 'API Working'
-        ]);
     }
 
     //User-Registration 
