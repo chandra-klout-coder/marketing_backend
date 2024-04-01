@@ -51,6 +51,16 @@ class AuthController extends Controller
         $this->smsService = $smsService;
     }
 
+
+    public function test()
+    {
+        return response()->json([
+            'status' => 200,
+            'message' => 'KKlout Marketing Application API Working.'
+        ]);
+    }
+
+
     //Send SMS
     public function sendsms()
     {
