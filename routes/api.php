@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Event;
+use App\Models\Member;
 use App\Models\Attendee;
 use Illuminate\Http\Request;
 use Facade\FlareClient\Report;
@@ -13,7 +14,6 @@ use App\Http\Controllers\API\AttendeeController;
 use App\Http\Controllers\API\FeedBackController;
 use App\Http\Controllers\API\MemberController;
 use App\Http\Controllers\API\NotificationController;
-use App\Models\Member;
 
 //Test
 Route::get('/test', [AuthController::class, 'test']);

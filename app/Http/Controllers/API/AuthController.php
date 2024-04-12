@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\API;
 
 use App\Models\Name;
+// use App\Models\PersonalAccessToken;
 use App\Models\User;
 use App\Models\City;
 use App\Models\State;
@@ -149,132 +150,6 @@ class AuthController extends Controller
                 'message' => 'Member Detail Not Found',
             ]);
         }
-    }
-
-    //
-
-    public function registerMemberOtp(Request $request)
-    {
-        if ($request->step === '1') {
-
-            $validator = Validator::make($request->all(), [
-                'first_name' => 'required | string | max:200',
-                'last_name' => 'string | max:200',
-                'email' => 'required | email | max: 255 | unique:users',
-                'mobile_number' => 'required | min:10 | max:10 | unique:users',
-                'company' => 'required',
-                'step' => 'required',
-            ]);
-
-            if ($validator->fails()) {
-
-                $errors = $validator->errors();
-
-                return response()->json([
-                    'status' => 422,
-                    'message' => 'Validation Error',
-                    'error' => $errors,
-                ]);
-            }
-
-            // Send OTP 
-            // $mobile_otp = rand(100000, 999999);
-            // $email_otp = rand(100000, 999999);
-
-            // For Demo purpose 
-            $email_otp = '123456';
-            $mobile_otp = '123456';
-
-            $email = $request->email;
-            $mobile_number = $request->mobile_number;
-
-            UserOtp::where('email', $email)->delete();
-
-            UserOtp::create([
-                'email' => $email,
-                'email_otp' => $email_otp,
-                'mobile' =>  $mobile_number,
-                'mobile_otp'  => $mobile_otp
-            ]);
-
-            $this->smsService->sendSMS('+91' . $mobile_number, 'Your OTP is : ' . $mobile_otp);
-
-            $email_message = 'Your OTP is : ' . $email_otp;
-
-            $this->emailService->sendRegistrationEmail($email, 'KLout Marketing : OTP Verification', $email_message);
-
-            return response()->json([
-                'status' => 200,
-                'message' => 'OTP Send to Mobile Number and Email.'
-            ]);
-        } elseif ($request->step === '2') {
-
-            $email = $request->email;
-            $mobile = $request->mobile_number;
-
-            $mobile_verify = UserOtp::where('mobile', $mobile)->first();
-            $email_verify = UserOtp::where('email', $email)->first();
-
-            if (!empty($mobile_verify) && !empty($mobile_verify)) {
-
-                if (($mobile_verify->mobile_otp !== trim($request->mobile_otp))) {
-                    return response()->json([
-                        'status' => 400,
-                        'error' => 'mobile_otp',
-                        'message' => 'Mobile OTP is Invalid.',
-                    ]);
-                }
-
-                if (($email_verify->email_otp !== trim($request->email_otp))) {
-                    return response()->json([
-                        'status' => 400,
-                        'error' => 'email_otp',
-                        'message' => 'Email OTP is Invalid.',
-                    ]);
-                } else if (!empty($mobile_verify) && !empty($email_verify)) {
-
-                    $user = User::create([
-                        'uuid' => Uuid::uuid4()->toString(),
-                        'first_name' => $request->first_name,
-                        'last_name' => $request->last_name,
-                        'email' => strtolower($request->email),
-                        'password' => Hash::make($request->password),
-                        'mobile_number' => $request->mobile_number,
-                        'company' => $request->company
-                    ]);
-
-                    $registration_success_message = "Congratulations ! Your registration is Completed on Klout Club.";
-
-                    $this->smsService->sendSMS('+91' . $mobile, $registration_success_message);
-
-                    $this->emailService->sendRegistrationEmail($email, 'Klout : Registration Successfully', $registration_success_message);
-
-                    $delete_otp_record = UserOtp::where('email', $email)->delete();
-
-                    if ($delete_otp_record) {
-                        return response()->json([
-                            'status' => 200,
-                            'message' => 'OTP Verified Successfully'
-                        ]);
-                    }
-                } else {
-                    return response()->json([
-                        'status' => 401,
-                        'message' => 'Something Went Wrong.Please try again.'
-                    ]);
-                }
-            } else {
-                return response()->json([
-                    'status' => 401,
-                    'message' => 'Invalid OTP.Please try again.'
-                ]);
-            }
-        }
-
-        return response()->json([
-            'status' => 200,
-            'message' => 'Invalid paramters and try again.'
-        ]);
     }
 
     //Mobile App
@@ -492,6 +367,130 @@ class AuthController extends Controller
         }
     }
 
+    public function registerMemberOtp(Request $request)
+    {
+        if ($request->step === '1') {
+
+            $validator = Validator::make($request->all(), [
+                'first_name' => 'required | string | max:200',
+                'last_name' => 'string | max:200',
+                'email' => 'required | email | max: 255 | unique:users',
+                'mobile_number' => 'required | min:10 | max:10 | unique:users',
+                'company' => 'required',
+                'step' => 'required',
+            ]);
+
+            if ($validator->fails()) {
+
+                $errors = $validator->errors();
+
+                return response()->json([
+                    'status' => 422,
+                    'message' => 'Validation Error',
+                    'error' => $errors,
+                ]);
+            }
+
+            // Send OTP 
+            // $mobile_otp = rand(100000, 999999);
+            // $email_otp = rand(100000, 999999);
+
+            // For Demo purpose 
+            $email_otp = '123456';
+            $mobile_otp = '123456';
+
+            $email = $request->email;
+            $mobile_number = $request->mobile_number;
+
+            UserOtp::where('email', $email)->delete();
+
+            UserOtp::create([
+                'email' => $email,
+                'email_otp' => $email_otp,
+                'mobile' =>  $mobile_number,
+                'mobile_otp'  => $mobile_otp
+            ]);
+
+            $this->smsService->sendSMS('+91' . $mobile_number, 'Your OTP is : ' . $mobile_otp);
+
+            $email_message = 'Your OTP is : ' . $email_otp;
+
+            $this->emailService->sendRegistrationEmail($email, 'KLout Marketing : OTP Verification', $email_message);
+
+            return response()->json([
+                'status' => 200,
+                'message' => 'OTP Send to Mobile Number and Email.'
+            ]);
+        } elseif ($request->step === '2') {
+
+            $email = $request->email;
+            $mobile = $request->mobile_number;
+
+            $mobile_verify = UserOtp::where('mobile', $mobile)->first();
+            $email_verify = UserOtp::where('email', $email)->first();
+
+            if (!empty($mobile_verify) && !empty($mobile_verify)) {
+
+                if (($mobile_verify->mobile_otp !== trim($request->mobile_otp))) {
+                    return response()->json([
+                        'status' => 400,
+                        'error' => 'mobile_otp',
+                        'message' => 'Mobile OTP is Invalid.',
+                    ]);
+                }
+
+                if (($email_verify->email_otp !== trim($request->email_otp))) {
+                    return response()->json([
+                        'status' => 400,
+                        'error' => 'email_otp',
+                        'message' => 'Email OTP is Invalid.',
+                    ]);
+                } else if (!empty($mobile_verify) && !empty($email_verify)) {
+
+                    $user = User::create([
+                        'uuid' => Uuid::uuid4()->toString(),
+                        'first_name' => $request->first_name,
+                        'last_name' => $request->last_name,
+                        'email' => strtolower($request->email),
+                        'password' => Hash::make($request->password),
+                        'mobile_number' => $request->mobile_number,
+                        'company' => $request->company
+                    ]);
+
+                    $registration_success_message = "Congratulations ! Your registration is Completed on Klout Club.";
+
+                    $this->smsService->sendSMS('+91' . $mobile, $registration_success_message);
+
+                    $this->emailService->sendRegistrationEmail($email, 'Klout : Registration Successfully', $registration_success_message);
+
+                    $delete_otp_record = UserOtp::where('email', $email)->delete();
+
+                    if ($delete_otp_record) {
+                        return response()->json([
+                            'status' => 200,
+                            'message' => 'OTP Verified Successfully'
+                        ]);
+                    }
+                } else {
+                    return response()->json([
+                        'status' => 401,
+                        'message' => 'Something Went Wrong.Please try again.'
+                    ]);
+                }
+            } else {
+                return response()->json([
+                    'status' => 401,
+                    'message' => 'Invalid OTP.Please try again.'
+                ]);
+            }
+        }
+
+        return response()->json([
+            'status' => 200,
+            'message' => 'Invalid paramters and try again.'
+        ]);
+    }
+
     //User-Registration 
     public function register(Request $request)
     {
@@ -526,14 +525,12 @@ class AuthController extends Controller
             $mobile_otp = rand(100000, 999999);
             $email_otp = rand(100000, 999999);
 
-            // For Demo purpose 
-            // $email_otp = '123456';
-            // $mobile_otp = '123456';
-
             $email = $request->email;
             $mobile_number = $request->mobile_number;
 
-            UserOtp::where('email', $email)->delete();
+            UserOtp::where('email', $email)
+                ->orWhere('mobile', $mobile_number)
+                ->delete();
 
             UserOtp::create([
                 'email' => $email,
@@ -542,16 +539,29 @@ class AuthController extends Controller
                 'mobile_otp'  => $mobile_otp
             ]);
 
-            $this->smsService->sendSMS('+91' . $mobile_number, 'Your OTP is : ' . $mobile_otp);
+            $mobile_otp_send = $this->send_local_text_sms(
+                $mobile_number,
+                $mobile_otp
+            );
+
+            // Twillio 
+            // $this->smsService->sendSMS('+91' . $mobile_number, 'Your OTP is : ' . $mobile_otp);
 
             $email_message = 'Your OTP is : ' . $email_otp;
 
             $this->emailService->sendRegistrationEmail($email, 'Klout: OTP Verification', $email_message);
 
-            return response()->json([
-                'status' => 200,
-                'message' => 'OTP Send to Mobile Number and Email.'
-            ]);
+            if ($mobile_otp_send) {
+                return response()->json([
+                    'status' => 200,
+                    'message' => 'Send OTP to Mobile Number and Email.'
+                ]);
+            } else {
+                return response()->json([
+                    'status' => 400,
+                    'message' => 'Something Went Wrong. Please try again later.'
+                ]);
+            }
         } elseif ($request->step === '2') {
 
             $email = $request->email;
@@ -561,7 +571,6 @@ class AuthController extends Controller
             $email_verify = UserOtp::where('email', $email)->first();
 
             if (!empty($mobile_verify) && !empty($mobile_verify)) {
-
 
                 if (($mobile_verify->mobile_otp !== trim($request->mobile_otp))) {
                     return response()->json([
@@ -596,19 +605,25 @@ class AuthController extends Controller
                         'notifications' => (!empty($request->notifications) && $request->notifications === "on")  ? "1" : "0"
                     ]);
 
-                    $registration_success_message = "Congratulations ! Your registration is Completed on Klout Club.";
+                    if ($user) {
 
-                    $this->smsService->sendSMS('+91' . $mobile, $registration_success_message);
+                        $registration_success_message = "Congratulations! Your registration is Completed on Klout Club.";
 
-                    $this->emailService->sendRegistrationEmail($email, 'Klout : Registration Successfully', $registration_success_message);
+                        $this->emailService->sendRegistrationEmail($email, 'Klout : Registration Successfully', $registration_success_message);
 
-                    $delete_otp_record = UserOtp::where('email', $email)->delete();
+                        $delete_otp_record = UserOtp::where('email', $email)->delete();
 
-                    if ($delete_otp_record) {
-                        return response()->json([
-                            'status' => 200,
-                            'message' => 'OTP Verified Successfully'
-                        ]);
+                        if ($delete_otp_record) {
+                            return response()->json([
+                                'status' => 200,
+                                'message' => 'OTP Verified and User Register Successfully.'
+                            ]);
+                        } else {
+                            return response()->json([
+                                'status' => 400,
+                                'message' => 'Something Went Wrong. Please try again later.'
+                            ]);
+                        }
                     }
                 } else {
                     return response()->json([
@@ -622,13 +637,49 @@ class AuthController extends Controller
                     'message' => 'Invalid OTP.Please try again.'
                 ]);
             }
+        } else {
+            return response()->json([
+                'status' => 200,
+                'message' => 'Invalid parameters and try again.'
+            ]);
         }
+    }
 
 
-        return response()->json([
-            'status' => 200,
-            'message' => 'Invalid paramters and try again.'
-        ]);
+    //Send SMS via Local Text API - Single SMS
+    public function send_local_text_sms($mobile_number, $otp)
+    {
+        $apiKey = urlencode(Config('app.textlocal_api_key'));
+
+        $numbers = array($mobile_number);
+
+        $sender = urlencode(Config('app.textlocal_sender'));
+
+        $content = $otp . " is your OTP for verifying your profile with KloutClub by Insightner Marketing Services";
+
+        $message = rawurlencode($content);
+
+        $numbers = implode(',', $numbers);
+
+        $data = array('apikey' => $apiKey, 'numbers' => $numbers, "sender" => $sender, "message" => $message);
+
+        $ch = curl_init('https://api.textlocal.in/send/');
+
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $data);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+
+        $response = curl_exec($ch);
+
+        curl_close($ch);
+
+        $responseData = json_decode($response, true);
+
+        if ($responseData['status'] === "success") {
+            return true;
+        } else {
+            return false;
+        }
     }
 
     //User-Login
